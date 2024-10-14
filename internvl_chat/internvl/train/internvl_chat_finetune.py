@@ -140,6 +140,10 @@ class ModelArguments:
         default='v2',
         metadata={'help': 'Specify the version of pixel shuffle implementation. Default is `v1`.'
                           'Please use `v2` to fix the bug of transposed image.'}
+    ),
+    use_flash_attn: bool = field(
+        default=True,
+        metadata={'help': 'Set to True to use Flash Attention. Default is True.'}
     )
 
 
@@ -677,12 +681,19 @@ def main():
         logger.info('Loading InternVLChatModel...')
         config = InternVLChatConfig.from_pretrained(model_args.model_name_or_path)
         config.vision_config.drop_path_rate = model_args.drop_path_rate
-        if config.llm_config.model_type == 'internlm2':
-            config.llm_config.attn_implementation = 'flash_attention_2'  # for InternLM
-            logger.info('Using flash_attention_2 for InternLM')
+
+        if model_args.use_flash_attn:
+            attn_impl = 'flash_attention_2'
+            logger.info('Using Flash Attention (flash_attention_2) for InternLM or LLaMA.')
         else:
-            config.llm_config._attn_implementation = 'flash_attention_2'  # for LLaMA
-            logger.info('Using flash_attention_2 for LLaMA')
+            attn_impl = 'eager'
+            logger.info('Using default attention implementation.')
+
+        if config.llm_config.model_type == 'internlm2':
+            config.llm_config.attn_implementation = attn_impl  # for InternLM
+        else:
+            config.llm_config._attn_implementation = attn_impl  # for LLaMA
+
         config.template = data_args.conv_style
         config.select_layer = model_args.vision_select_layer
         config.dynamic_image_size = data_args.dynamic_image_size
@@ -700,14 +711,16 @@ def main():
             model_args.vision_path, torch_dtype=torch.bfloat16, config=vision_config)
         logger.info('Loading LLaMA...')
         llm_config = AutoConfig.from_pretrained(model_args.llm_path, trust_remote_code=True)
+
         if llm_config.model_type == 'internlm2':
             model_type = InternLM2ForCausalLM
-            llm_config.attn_implementation = 'flash_attention_2'  # for InternLM
+            llm_config.attn_implementation = 'flash_attention_2'  if model_args.use_flash_attn else 'eager'
             logger.info('Using flash_attention_2 for InternLM')
         else:
             model_type = AutoModelForCausalLM
-            llm_config._attn_implementation = 'flash_attention_2'  # for LLaMA
+            llm_config._attn_implementation = 'flash_attention_2' if model_args.use_flash_attn else 'eager'
             logger.info('Using flash_attention_2 for LLaMA')
+
         llm = model_type.from_pretrained(
             model_args.llm_path, torch_dtype=torch.bfloat16,
             config=llm_config, trust_remote_code=True)
