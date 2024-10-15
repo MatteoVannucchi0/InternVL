@@ -178,7 +178,11 @@ class DataTrainingArguments:
     )
     meta_path: Optional[str] = field(
         default=None,
-        metadata={'help': 'The path of the meta file of datasets.'},
+        metadata={'help': 'The path of the meta file of datasets for training.'},
+    )
+    eval_meta_path: Optional[str] = field(
+        default=None,
+        metadata={'help': 'The path of the meta file of datasets for evaluation.'},
     )
     use_data_resampling: Optional[bool] = field(
         default=False,
@@ -560,9 +564,14 @@ def build_datasets(
     min_dynamic_patch=1,
     max_dynamic_patch=12,
     normalize_type='imagenet',
+    is_train: bool = True,
 ):
     datasets = []
     lengths = []
+
+    meta_path = data_args.meta_path if is_train else data_args.eval_meta_path
+
+
     ds_collections = json.loads(open(data_args.meta_path).read())
     for ds_idx, ds_name in enumerate(ds_collections.keys()):
         repeat_time = ds_collections[ds_name]['repeat_time']
@@ -781,6 +790,13 @@ def main():
         min_dynamic_patch=data_args.min_dynamic_patch, max_dynamic_patch=data_args.max_dynamic_patch,
         normalize_type=data_args.normalize_type)
 
+    eval_dataset = build_datasets(
+        data_args, tokenizer, tcs_loader, model, group_by_length=training_args.group_by_length,
+        dynamic_image_size=data_args.dynamic_image_size, use_thumbnail=data_args.use_thumbnail,
+        min_dynamic_patch=data_args.min_dynamic_patch, max_dynamic_patch=data_args.max_dynamic_patch,
+        normalize_type=data_args.normalize_type, is_train=False)
+
+
     def _freeze_params(module):
         for param in module.parameters():
             param.requires_grad = False
@@ -830,7 +846,7 @@ def main():
         model=model,
         args=training_args,
         train_dataset=train_dataset if training_args.do_train else None,
-        eval_dataset=None,
+        eval_dataset=eval_dataset,
         tokenizer=tokenizer,
         data_collator=concat_pad_data_collator
     )
