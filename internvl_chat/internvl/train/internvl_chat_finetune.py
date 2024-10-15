@@ -570,9 +570,7 @@ def build_datasets(
     lengths = []
 
     meta_path = data_args.meta_path if is_train else data_args.eval_meta_path
-
-
-    ds_collections = json.loads(open(data_args.meta_path).read())
+    ds_collections = json.loads(open(meta_path).read())
     for ds_idx, ds_name in enumerate(ds_collections.keys()):
         repeat_time = ds_collections[ds_name]['repeat_time']
         if 'max_dynamic_patch' in ds_collections[ds_name]:
